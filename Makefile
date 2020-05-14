@@ -11,16 +11,13 @@
 #	make release-all
 
 
-IMAGE_NAME := fluent/fluentd
+IMAGE_NAME := raquette/fluentd-kubernetes
 X86_IMAGES := \
-	v1.10/alpine:v1.10.4-1.0,v1.10-1,edge \
-	v1.10/debian:v1.10.4-debian-1.0,v1.10-debian-1,edge-debian \
-	v1.10/windows:v1.10.4-windows-1.0,v1.10-windows-1
+	v1.10/amd64/debian:v1.10.4-debian-amd64-1.0,v1.10-debian-amd64-1,edge-debian-amd64 \
 #	<Dockerfile>:<version>,<tag1>,<tag2>,...
 
 # Define images for running on ARM platforms
-ARM_IMAGES := \
-	v1.10/armhf/debian:v1.10.4-debian-armhf-1.0,v1.10-debian-armhf-1,edge-debian-armhf \
+ARM_IMAGES := 
 
 # Define images for running on ARM64 platforms
 ARM64_IMAGES := \
@@ -114,7 +111,7 @@ release-all:
 # Usage:
 #	make src [DOCKERFILE=] [VERSION=] [TAGS=t1,t2,...]
 
-src: dockerfile fluent.conf entrypoint.sh post-push-hook post-checkout-hook
+src: dockerfile gemfile fluent.conf entrypoint.sh plugins post-push-hook post-checkout-hook
 
 
 
@@ -141,7 +138,7 @@ src-all:
 
 dockerfile:
 	mkdir -p $(DOCKERFILE)
-	docker run --rm -i -v $(PWD)/Dockerfile.template.erb:/Dockerfile.erb:ro \
+	docker run --rm -i -v $(PWD)/templates/Dockerfile.template.erb:/Dockerfile.erb:ro \
 		ruby:alpine erb -U -T 1 \
 			dockerfile='$(DOCKERFILE)' \
 			version='$(VERSION)' \
@@ -162,7 +159,52 @@ dockerfile-all:
 			                 $(word 2,$(subst :, ,$(img))))) ; \
 	))
 
+# Generate Gemfile and Gemfile.lock from template.
+#
+# Usage:
+#       make gemfile [DOCKERFILE=] [VERSION=]
+gemfile:
+	mkdir -p $(DOCKERFILE)
+	docker run --rm -i -v $(PWD)/templates/Gemfile.erb:/Gemfile.erb:ro \
+	        ruby:alpine erb -U -T 1 \
+	                dockerfile='$(DOCKERFILE)' \
+	                version='$(VERSION)' \
+	        /Gemfile.erb > $(DOCKERFILE)/Gemfile
+	docker run --rm -i -v $(PWD)/$(DOCKERFILE)/Gemfile:/Gemfile:ro \
+	        ruby:alpine sh -c "apk add --no-cache --quiet git && bundle lock --print" > ${DOCKERFILE}/Gemfile.lock
 
+# Generate Gemfile and Gemfile.lock from template for all supported Docker images.
+#
+# Usage:
+#       make gemfile-all
+
+gemfile-all:
+	(set -e ; $(foreach img,$(ALL_IMAGES), \
+	        make gemfile \
+	                DOCKERFILE=$(word 1,$(subst :, ,$(img))) \
+	                VERSION=$(word 1,$(subst $(comma), ,\
+	                                 $(word 2,$(subst :, ,$(img))))) ; \
+	))
+
+# Generate plugins for version
+#
+# Usage:
+#    make plugins [DOCKERFILE=]
+
+plugins:
+	mkdir -p $(DOCKERFILE)/plugins
+	cp -R plugins/$(FLUENTD_VERSION)/shared/. $(DOCKERFILE)/plugins/
+
+# copy plugins required for all supported Docker images.
+#
+# Usage:
+#       make plugins-all
+
+plugins-all:
+	(set -e ; $(foreach img,$(ALL_IMAGES), \
+	        make plugins \
+	                DOCKERFILE=$(word 1,$(subst :, ,$(img))) ; \
+	))
 
 # Generate fluent.conf from template.
 #
@@ -171,7 +213,7 @@ dockerfile-all:
 
 fluent.conf:
 	mkdir -p $(DOCKERFILE)
-	docker run --rm -i -v $(PWD)/fluent.conf.erb:/fluent.conf.erb:ro \
+	docker run --rm -i -v $(PWD)/templates/fluent.conf.erb:/fluent.conf.erb:ro \
 		ruby:alpine erb -U -T 1 \
 			version='$(VERSION)' \
 		/fluent.conf.erb > $(DOCKERFILE)/fluent.conf
@@ -198,7 +240,7 @@ fluent.conf-all:
 
 entrypoint.sh:
 	mkdir -p $(DOCKERFILE)
-	docker run --rm -i -v $(PWD)/entrypoint.sh.erb:/entrypoint.sh.erb:ro \
+	docker run --rm -i -v $(PWD)/templates/entrypoint.sh.erb:/entrypoint.sh.erb:ro \
 		ruby:alpine erb -U -T 1 \
 			dockerfile='$(DOCKERFILE)' \
 			version='$(VERSION)' \
@@ -234,7 +276,7 @@ entrypoint.sh-all:
 
 post-push-hook:
 	mkdir -p $(DOCKERFILE)/hooks
-	docker run --rm -i -v $(PWD)/post_push.erb:/post_push.erb:ro \
+	docker run --rm -i -v $(PWD)/templates/post_push.erb:/post_push.erb:ro \
 		ruby:alpine erb -U \
 			image_tags='$(TAGS)' \
 		/post_push.erb > $(DOCKERFILE)/hooks/post_push
@@ -269,7 +311,7 @@ post-push-hook-all:
 post-checkout-hook:
 	if [ -n "$(findstring /armhf/,$(DOCKERFILE))" ] || [ -n "$(findstring /arm64/,$(DOCKERFILE))" ]; then \
 		mkdir -p $(DOCKERFILE)/hooks; \
-		docker run --rm -i -v $(PWD)/post_checkout.erb:/post_checkout.erb:ro \
+		docker run --rm -i -v $(PWD)/templates/post_checkout.erb:/post_checkout.erb:ro \
 			ruby:alpine erb -U \
 				dockerfile='$(DOCKERFILE)' \
 			/post_checkout.erb > $(DOCKERFILE)/hooks/post_checkout ; \
@@ -350,6 +392,8 @@ endif
         release release-all \
         src src-all \
         dockerfile dockerfile-all \
+        gemfile gemfile-all \
+        plugins plugins-all \
         fluent.conf fluent.conf-all \
         post-push-hook post-push-hook-all \
 		post-checkout-hook post-checkout-hook-all \
