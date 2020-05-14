@@ -23,7 +23,5 @@ Current images use fluentd v1 serise.
 
 
 - `v1.10.4-debian-1.0` [manifest for arm64 and amd64]
-- `v1.10.4-debian-amd64-1.0`, `v1.10-debian-amd64-1`, `edge-debian-amd64`
-  [(v1.10/amd64/debian/Dockerfile)][fluentd-1-debian-amd64]
-- `v1.10.4-debian-arm64-1.0`, `v1.10-debian-arm64-1`, `edge-debian-arm64`
-  [(v1.10/arm64/debian/Dockerfile)][fluentd-1-debian-arm64]
+- `v1.10.4-debian-amd64-1.0` [(v1.10/amd64/debian/Dockerfile)][fluentd-1-debian-amd64]
+- `v1.10.4-debian-arm64-1.0` [(v1.10/arm64/debian/Dockerfile)][fluentd-1-debian-arm64]
