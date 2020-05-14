@@ -30,6 +30,8 @@ DOCKERFILE ?= $(word 1,$(subst :, ,$(word 1,$(ALL_IMAGES))))
 VERSION ?=  $(word 1,$(subst $(comma), ,\
                      $(word 2,$(subst :, ,$(word 1,$(ALL_IMAGES))))))
 TAGS ?= $(word 2,$(subst :, ,$(word 1,$(ALL_IMAGES))))
+ARCH ?= $(word 3,$(subst -, ,$(word 1,$(parsed-tags))))
+GENERIC_TAG ?= $(subst $(ARCH)-,,$(word 1, $(subst $(comma), ,$(TAGS))))
 
 no-cache ?= no
 
@@ -81,12 +83,24 @@ push:
 
 
 
+# Manually add Docker images to manifest
+#
+# Usage:
+#	make manifest [TAGS=t1,t2,...]
+
+manifest:
+	(set -e ; \
+		docker manifest create -a $(IMAGE_NAME):$(GENERIC_TAG) $(IMAGE_NAME):$(word 1,$(subst $(comma), ,$(parsed-tags))); \
+		docker manifest annotate --arch $(ARCH) $(IMAGE_NAME):$(GENERIC_TAG)  $(IMAGE_NAME):$(word 1,$(parsed-tags)); \
+	)
+
+
 # Make manual release of Docker images to Docker Hub.
 #
 # Usage:
 #	make release [no-cache=(yes|no)] [DOCKERFILE=] [VERSION=] [TAGS=t1,t2,...]
 
-release: | image tags push
+release: | image tags manifest push
 
 
 
@@ -103,6 +117,9 @@ release-all:
 			                 $(word 2,$(subst :, ,$(img))))) \
 			TAGS=$(word 2,$(subst :, ,$(img))) ; \
 	))
+	(set -e ; \
+                docker manifest push $(IMAGE_NAME):$(GENERIC_TAG); \
+	)
 
 
 
@@ -389,6 +406,7 @@ endif
 
 
 .PHONY: image tags push \
+        manifest \
         release release-all \
         src src-all \
         dockerfile dockerfile-all \
